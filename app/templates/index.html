@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家庭资产管理系统</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="container">
+  <h1>家庭资产管理系统</h1>
+
+  <!-- 汇总卡片 -->
+  <div class="card">
+    <div class="card-header" onclick="toggleSection('summary-body', this)">
+      <h2><span class="toggle-icon">▼</span>资产汇总</h2>
+      <span id="summary-date">-</span>
+    </div>
+    <div id="summary-body" class="card-body">
+      <div class="summary-top">
+        <div class="summary-info">
+          <div class="date">数据日期：<span id="summary-date2">-</span></div>
+          <div class="total" id="summary-total">-</div>
+        </div>
+        <div class="summary-chart">
+          <canvas id="summaryPie"></canvas>
+        </div>
+      </div>
+      <div id="summary-details"></div>
+    </div>
+  </div>
+
+  <!-- 全部记录 -->
+  <div class="card">
+    <div class="card-header" onclick="toggleSection('records-body', this)">
+      <h2><span class="toggle-icon">▼</span>全部记录</h2>
+      <button class="btn-primary" onclick="event.stopPropagation();openAddModal()">+ 添加记录</button>
+    </div>
+    <div id="records-body" class="card-body">
+      <div class="filter-bar">
+        <select id="filter-type" onchange="loadProducts()">
+          <option value="">全部类型</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>类型</th><th>名称</th><th>持仓份额</th><th>平均成本</th><th>最新市值</th>
+            <th>总价</th><th>收益</th><th>收益率</th><th>日期</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 操作菜单（fixed 定位） -->
+<div id="action-menu" class="action-menu">
+  <button onclick="menuBuy()">买入</button>
+  <button onclick="menuSell()">卖出</button>
+  <button onclick="menuUpdate()">更新市值</button>
+  <button onclick="menuEdit()">编辑</button>
+  <button onclick="menuDelete()">删除</button>
+  <button onclick="menuHistory()">历史记录</button>
+</div>
+
+<!-- 添加记录弹窗 -->
+<div id="add-modal" class="modal-overlay" onclick="closeOnOverlay(event, 'add-modal')">
+  <div class="modal">
+    <div class="modal-header"><h3>添加记录</h3><button class="btn-secondary" onclick="closeModal('add-modal')">关闭</button></div>
+    <form id="add-form" onsubmit="addRecord(event)">
+      <div class="modal-body">
+        <div class="form-row"><label>资产类型</label><select name="asset_type" id="add-asset-type" required></select></div>
+        <div class="form-row"><label>产品名称</label><input name="name" required></div>
+        <div class="form-row"><label>持仓份额</label><input name="amount" type="number" step="0.0001" required></div>
+        <div class="form-row"><label>平均成本（每份）</label><input name="cost" type="number" step="0.0001" required></div>
+        <div class="form-row"><label>最新市值（每份）</label><input name="value" type="number" step="0.0001" required></div>
+        <div class="form-row"><label>日期</label><input name="date" type="date" id="add-date" required></div>
+        <div class="form-row"><label>备注</label><input name="note"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-modal')">取消</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 通用操作弹窗（买入/卖出/更新市值） -->
+<div id="action-modal" class="modal-overlay" onclick="closeOnOverlay(event, 'action-modal')">
+  <div class="modal">
+    <div class="modal-header"><h3 id="action-title">操作</h3><button class="btn-secondary" onclick="closeModal('action-modal')">关闭</button></div>
+    <div class="modal-body">
+      <div id="action-info" class="info-text"></div>
+      <div id="action-fields"></div>
+      <div class="form-row"><label>操作日期</label><input id="action-date" type="date"></div>
+      <div class="form-row"><label>备注</label><input id="action-note"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('action-modal')">取消</button>
+      <button class="btn-primary" id="action-confirm" onclick="">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 历史记录弹窗 -->
+<div id="history-modal" class="modal-overlay" onclick="closeOnOverlay(event, 'history-modal')">
+  <div class="modal history-modal">
+    <div class="modal-header"><h3 id="history-title">历史记录</h3><button class="btn-secondary" onclick="closeModal('history-modal')">关闭</button></div>
+    <div class="modal-body">
+      <div id="history-info" class="info-text"></div>
+      <div style="height:280px;"><canvas id="historyChart"></canvas></div>
+      <table>
+        <thead>
+          <tr><th>日期</th><th>份额</th><th>平均成本</th><th>最新市值</th><th>操作类型</th><th>变动份额</th><th>备注</th></tr>
+        </thead>
+        <tbody id="history-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="edit-modal" class="modal-overlay" onclick="closeOnOverlay(event, 'edit-modal')">
+  <div class="modal">
+    <div class="modal-header"><h3>编辑产品</h3><button class="btn-secondary" onclick="closeModal('edit-modal')">关闭</button></div>
+    <div class="modal-body">
+      <div class="form-row"><label>产品名称</label><input id="edit-name" disabled></div>
+      <div class="form-row"><label>资产类型</label><select id="edit-asset-type"></select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('edit-modal')">取消</button>
+      <button class="btn-primary btn-save" id="edit-save" onclick="saveEdit()" disabled>保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const OP_COLORS = { '买入': '#c9a227', '卖出': '#f43f5e', '更新市值': '#2dd4bf', '添加记录': '#a78bfa' };
+let summaryPieChart = null;
+let historyChart = null;
+let assetTypes = [];
+let currentMenuName = '';
+let currentMenuProduct = null;
+let editOriginalType = '';
+
+function fmt(n) { return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtPct(n) { return Number(n).toFixed(2) + '%'; }
+function today() { return new Date().toISOString().slice(0,10); }
+
+async function init() {
+  Chart.defaults.color = '#949aaf';
+  Chart.defaults.borderColor = '#252a36';
+  Chart.defaults.font.family = "'Outfit', 'Noto Sans SC', sans-serif";
+  document.getElementById('add-date').value = today();
+  assetTypes = await fetch('/api/types').then(r=>r.json());
+  const opts = assetTypes.map(t=>`<option value="${t}">${t}</option>`).join('');
+  document.getElementById('add-asset-type').innerHTML = opts;
+  document.getElementById('filter-type').innerHTML = '<option value="">全部类型</option>' + opts;
+  document.getElementById('edit-asset-type').innerHTML = opts;
+  await loadSummary();
+  await loadProducts();
+}
+
+/* ========== 汇总 ========== */
+async function loadSummary() {
+  const data = await fetch('/api/latest_summary').then(r=>r.json());
+  document.getElementById('summary-date').textContent = data.date;
+  document.getElementById('summary-date2').textContent = data.date;
+  document.getElementById('summary-total').textContent = '¥' + fmt(data.total);
+
+  const labels = Object.keys(data.by_type);
+  const values = Object.values(data.by_type);
+  const ctx = document.getElementById('summaryPie').getContext('2d');
+  if (summaryPieChart) summaryPieChart.destroy();
+  summaryPieChart = new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels, datasets: [{
+        data: values,
+        backgroundColor: ['#c9a227','#2dd4bf','#f43f5e','#8b5cf6']
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: (ctx)=>{
+              const sum = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              const pct = sum ? (ctx.raw/sum*100).toFixed(1) : 0;
+              return `${ctx.label}: ¥${fmt(ctx.raw)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // 分组明细表
+  let html = '';
+  for (const [atype, group] of Object.entries(data.details || {})) {
+    html += `<table>
+      <thead><tr class="cat-row" onclick="toggleRows(this)"><th colspan="7"><span class="toggle-icon">▼</span>${atype}（总计 ¥${fmt(group.total)}）</th></tr></thead>
+      <tbody>`;
+    for (const r of group.records) {
+      const profitClass = r.profit >= 0 ? 'profit-up' : 'profit-down';
+      html += `<tr class="item-row">
+        <td>${r.asset_type}</td><td>${r.name}</td><td>${fmt(r.cost)}</td><td>${fmt(r.value)}</td>
+        <td>¥${fmt(r.total_value)}</td><td class="${profitClass}">¥${fmt(r.profit)}</td><td class="${profitClass}">${fmtPct(r.profit_pct)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  document.getElementById('summary-details').innerHTML = html;
+}
+
+function toggleRows(th) {
+  const table = th.closest('table');
+  const rows = table.querySelectorAll('.item-row');
+  const icon = th.querySelector('.toggle-icon');
+  const anyVisible = Array.from(rows).some(r=>!r.classList.contains('collapsed'));
+  rows.forEach(r=>r.classList.toggle('collapsed', anyVisible));
+  icon.textContent = anyVisible ? '▶' : '▼';
+}
+
+/* ========== 产品列表 ========== */
+async function loadProducts() {
+  const type = document.getElementById('filter-type').value;
+  const url = type ? `/api/products?asset_type=${encodeURIComponent(type)}` : '/api/products';
+  const data = await fetch(url).then(r=>r.json());
+  const tbody = document.getElementById('records-tbody');
+  let html = '';
+  for (const r of data) {
+    if (r.name.endsWith('_删除')) continue;
+    const profitClass = r.profit >= 0 ? 'profit-up' : 'profit-down';
+    html += `<tr>
+      <td>${r.asset_type}</td><td>${r.name}</td><td>${fmt(r.amount)}</td><td>${fmt(r.cost)}</td>
+      <td>${fmt(r.value)}</td><td>¥${fmt(r.total_value)}</td>
+      <td class="${profitClass}">¥${fmt(r.profit)}</td><td class="${profitClass}">${fmtPct(r.profit_pct)}</td>
+      <td>${r.date}</td>
+      <td><button class="action-btn" onclick="toggleActions('${encodeURIComponent(r.name)}', this, ${JSON.stringify(r).replace(/"/g,'&quot;')})">操作 ▼</button></td>
+    </tr>`;
+  }
+  tbody.innerHTML = html || '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">暂无数据</td></tr>';
+}
+
+/* ========== 操作菜单 ========== */
+function toggleActions(encodedName, btn, productObj) {
+  event.stopPropagation();
+  const menu = document.getElementById('action-menu');
+  if (currentMenuName === decodeURIComponent(encodedName) && menu.style.display === 'block') {
+    menu.style.display = 'none'; currentMenuName = ''; return;
+  }
+  currentMenuName = decodeURIComponent(encodedName);
+  currentMenuProduct = productObj;
+  const rect = btn.getBoundingClientRect();
+  menu.style.left = rect.left + 'px';
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.display = 'block';
+}
+
+document.addEventListener('click', (e)=>{
+  const menu = document.getElementById('action-menu');
+  if (!menu.contains(e.target)) menu.style.display = 'none';
+});
+
+function menuBuy() { document.getElementById('action-menu').style.display='none'; buyProduct(currentMenuName, currentMenuProduct); }
+function menuSell() { document.getElementById('action-menu').style.display='none'; sellProduct(currentMenuName, currentMenuProduct); }
+function menuUpdate() { document.getElementById('action-menu').style.display='none'; updateValue(currentMenuName, currentMenuProduct); }
+function menuEdit() { document.getElementById('action-menu').style.display='none'; editProduct(currentMenuName, currentMenuProduct); }
+function menuDelete() { document.getElementById('action-menu').style.display='none'; delByName(currentMenuName, currentMenuProduct); }
+function menuHistory() { document.getElementById('action-menu').style.display='none'; showHistory(currentMenuName); }
+
+/* ========== 添加记录 ========== */
+function openAddModal() { document.getElementById('add-modal').classList.add('active'); }
+
+async function addRecord(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const res = await fetch('/api/records', { method:'POST', body: fd }).then(r=>r.json());
+  // 自动记录"添加记录"操作历史
+  const opFd = new FormData();
+  opFd.append('product_id', res.id);
+  opFd.append('product_name', fd.get('name'));
+  opFd.append('asset_type', fd.get('asset_type'));
+  opFd.append('operation_type', '添加记录');
+  opFd.append('change_amount', fd.get('amount'));
+  opFd.append('price', fd.get('value'));
+  opFd.append('new_amount', fd.get('amount'));
+  opFd.append('new_cost', fd.get('cost'));
+  opFd.append('new_value', fd.get('value'));
+  opFd.append('date', fd.get('date'));
+  opFd.append('note', fd.get('note')||'');
+  await fetch('/api/operations', { method:'POST', body: opFd });
+  closeModal('add-modal'); form.reset();
+  document.getElementById('add-date').value = today();
+  await loadSummary(); await loadProducts();
+}
+
+/* ========== 通用操作弹窗 ========== */
+function openActionModal(title, infoHtml, fieldsHtml, onConfirm) {
+  document.getElementById('action-title').textContent = title;
+  document.getElementById('action-info').innerHTML = infoHtml;
+  document.getElementById('action-fields').innerHTML = fieldsHtml;
+  document.getElementById('action-date').value = today();
+  document.getElementById('action-note').value = '';
+  const btn = document.getElementById('action-confirm');
+  btn.onclick = onConfirm;
+  document.getElementById('action-modal').classList.add('active');
+}
+
+function getActionVal(id) {
+  const el = document.getElementById(id);
+  return el ? parseFloat(el.value||0) : 0;
+}
+
+function getActionDate() { return document.getElementById('action-date').value; }
+function getActionNote() { return document.getElementById('action-note').value; }
+
+/* ========== 买入 ========== */
+function buyProduct(name, product) {
+  const p = product || {};
+  openActionModal(
+    '买入',
+    `<div>当前持仓：${fmt(p.amount||0)} 份</div><div>当前平均成本：${fmt(p.cost||0)} 元</div><div>当前市值：${fmt(p.value||0)} 元</div>`,
+    `<div class="form-row"><label>买入份额</label><input id="buy-amount" type="number" step="0.0001" value="0"></div>
+     <div class="form-row"><label>买入时最新市值（每份）</label><input id="buy-value" type="number" step="0.0001" value="${p.value||0}"></div>`,
+    async () => {
+      const buyAmount = getActionVal('buy-amount');
+      const newValue = getActionVal('buy-value');
+      if (buyAmount <= 0) { alert('买入份额必须大于0'); return; }
+      const curAmount = parseFloat(p.amount||0);
+      const curCost = parseFloat(p.cost||0);
+      const newAmount = curAmount + buyAmount;
+      const newCost = newAmount ? (curAmount*curCost + buyAmount*newValue)/newAmount : 0;
+      const fd = new FormData();
+      fd.append('asset_type', p.asset_type); fd.append('name', p.name);
+      fd.append('amount', newAmount); fd.append('cost', newCost); fd.append('value', newValue);
+      fd.append('date', getActionDate()); fd.append('category', p.category||''); fd.append('note', getActionNote());
+      await fetch(`/api/records/${p.id}`, { method:'POST', body: fd });
+      const op = new FormData();
+      op.append('product_id', p.id); op.append('product_name', p.name); op.append('asset_type', p.asset_type);
+      op.append('operation_type', '买入'); op.append('change_amount', buyAmount); op.append('price', newValue);
+      op.append('new_amount', newAmount); op.append('new_cost', newCost); op.append('new_value', newValue);
+      op.append('date', getActionDate()); op.append('note', getActionNote());
+      await fetch('/api/operations', { method:'POST', body: op });
+      closeModal('action-modal'); await loadSummary(); await loadProducts();
+    }
+  );
+}
+
+/* ========== 卖出 ========== */
+function sellProduct(name, product) {
+  const p = product || {};
+  openActionModal(
+    '卖出',
+    `<div>当前持仓：${fmt(p.amount||0)} 份</div><div>当前平均成本：${fmt(p.cost||0)} 元</div><div>当前市值：${fmt(p.value||0)} 元</div>`,
+    `<div class="form-row"><label>卖出份额</label><input id="sell-amount" type="number" step="0.0001" value="0"></div>
+     <div class="form-row"><label>卖出每份价格</label><input id="sell-price" type="number" step="0.0001" value="${p.value||0}"></div>`,
+    async () => {
+      const sellAmount = getActionVal('sell-amount');
+      const sellPrice = getActionVal('sell-price');
+      if (sellAmount <= 0) { alert('卖出份额必须大于0'); return; }
+      const curAmount = parseFloat(p.amount||0);
+      if (sellAmount > curAmount) { alert('卖出份额不能超过持仓'); return; }
+      const newAmount = curAmount - sellAmount;
+      const newCost = parseFloat(p.cost||0);
+      const fd = new FormData();
+      fd.append('asset_type', p.asset_type); fd.append('name', p.name);
+      fd.append('amount', newAmount); fd.append('cost', newCost); fd.append('value', sellPrice);
+      fd.append('date', getActionDate()); fd.append('category', p.category||''); fd.append('note', getActionNote());
+      await fetch(`/api/records/${p.id}`, { method:'POST', body: fd });
+      const op = new FormData();
+      op.append('product_id', p.id); op.append('product_name', p.name); op.append('asset_type', p.asset_type);
+      op.append('operation_type', '卖出'); op.append('change_amount', sellAmount); op.append('price', sellPrice);
+      op.append('new_amount', newAmount); op.append('new_cost', newCost); op.append('new_value', sellPrice);
+      op.append('date', getActionDate()); op.append('note', getActionNote());
+      await fetch('/api/operations', { method:'POST', body: op });
+      closeModal('action-modal'); await loadSummary(); await loadProducts();
+    }
+  );
+}
+
+/* ========== 更新市值 ========== */
+function updateValue(name, product) {
+  const p = product || {};
+  openActionModal(
+    '更新市值',
+    `<div>当前持仓：${fmt(p.amount||0)} 份</div><div>当前平均成本：${fmt(p.cost||0)} 元</div><div>当前市值：${fmt(p.value||0)} 元</div>`,
+    `<div class="form-row"><label>最新市值（每份）</label><input id="new-market-value" type="number" step="0.0001" value="${p.value||0}"></div>`,
+    async () => {
+      const newValue = getActionVal('new-market-value');
+      const fd = new FormData();
+      fd.append('asset_type', p.asset_type); fd.append('name', p.name);
+      fd.append('amount', p.amount||0); fd.append('cost', p.cost||0); fd.append('value', newValue);
+      fd.append('date', getActionDate()); fd.append('category', p.category||''); fd.append('note', getActionNote());
+      await fetch(`/api/records/${p.id}`, { method:'POST', body: fd });
+      const op = new FormData();
+      op.append('product_id', p.id); op.append('product_name', p.name); op.append('asset_type', p.asset_type);
+      op.append('operation_type', '更新市值'); op.append('change_amount', 0); op.append('price', newValue);
+      op.append('new_amount', p.amount||0); op.append('new_cost', p.cost||0); op.append('new_value', newValue);
+      op.append('date', getActionDate()); op.append('note', getActionNote());
+      await fetch('/api/operations', { method:'POST', body: op });
+      closeModal('action-modal'); await loadSummary(); await loadProducts();
+    }
+  );
+}
+
+/* ========== 编辑 ========== */
+function editProduct(name, product) {
+  const p = product || {};
+  document.getElementById('edit-name').value = p.name;
+  document.getElementById('edit-asset-type').value = p.asset_type;
+  editOriginalType = p.asset_type;
+  const saveBtn = document.getElementById('edit-save');
+  saveBtn.disabled = true;
+  document.getElementById('edit-asset-type').onchange = () => {
+    saveBtn.disabled = document.getElementById('edit-asset-type').value === editOriginalType;
+  };
+  document.getElementById('edit-modal').dataset.productId = p.id;
+  document.getElementById('edit-modal').dataset.product = JSON.stringify(p);
+  document.getElementById('edit-modal').classList.add('active');
+}
+
+async function saveEdit() {
+  const modal = document.getElementById('edit-modal');
+  const p = JSON.parse(modal.dataset.product);
+  const newType = document.getElementById('edit-asset-type').value;
+  const fd = new FormData();
+  fd.append('asset_type', newType); fd.append('name', p.name);
+  fd.append('amount', p.amount); fd.append('cost', p.cost); fd.append('value', p.value);
+  fd.append('date', p.date); fd.append('category', p.category||''); fd.append('note', p.note||'');
+  await fetch(`/api/records/${p.id}`, { method:'POST', body: fd });
+  closeModal('edit-modal'); await loadSummary(); await loadProducts();
+}
+
+/* ========== 删除 ========== */
+async function delByName(name, product) {
+  if (!confirm(`确定删除产品「${name}」吗？`)) return;
+  const p = product || {};
+  await fetch(`/api/records/${p.id}`, { method:'DELETE' });
+  await loadSummary(); await loadProducts();
+}
+
+/* ========== 历史记录 ========== */
+async function showHistory(name) {
+  const data = await fetch(`/api/product/${encodeURIComponent(name)}`).then(r=>r.json());
+  const cur = data.current || {};
+  document.getElementById('history-title').textContent = `${name} - 历史记录`;
+  const profitClass = (cur.profit||0) >= 0 ? 'profit-up' : 'profit-down';
+  document.getElementById('history-info').innerHTML = `
+    <div>持仓份额：${fmt(cur.amount||0)} | 平均成本：${fmt(cur.cost||0)} | 最新市值：${fmt(cur.value||0)}</div>
+    <div>总价：¥${fmt(cur.total_value||0)} | 收益：<span class="${profitClass}">¥${fmt(cur.profit||0)} (${fmtPct(cur.profit_pct||0)})</span></div>
+  `;
+
+  // 表格
+  const tbody = document.getElementById('history-tbody');
+  let html = '';
+  for (const op of data.operations || []) {
+    html += `<tr>
+      <td>${op.date}</td><td>${fmt(op.new_amount)}</td><td>${fmt(op.new_cost)}</td><td>${fmt(op.new_value)}</td>
+      <td>${op.operation_type}</td><td>${fmt(op.change_amount)}</td><td>${op.note||''}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">暂无历史记录</td></tr>';
+
+  // 折线图：同一天保留最后一次操作
+  const ops = (data.operations || []).slice();
+  const lastByDate = {};
+  for (const op of ops) {
+    lastByDate[op.date] = op;
+  }
+  const dates = Object.keys(lastByDate).sort();
+  const totals = dates.map(d=>{
+    const op = lastByDate[d];
+    return parseFloat(op.new_amount||0) * parseFloat(op.new_value||0);
+  });
+  const profits = dates.map(d=>{
+    const op = lastByDate[d];
+    const cost = parseFloat(op.new_cost||0);
+    const value = parseFloat(op.new_value||0);
+    return cost ? ((value-cost)/cost*100) : 0;
+  });
+  const pointColors = dates.map(d=> OP_COLORS[lastByDate[d].operation_type] || '#9ca3af');
+  const profitPointColors = profits.map(v=> v>=0 ? '#2dd4bf' : '#f43f5e');
+
+  const ctx = document.getElementById('historyChart').getContext('2d');
+  if (historyChart) historyChart.destroy();
+  historyChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: '总价',
+          data: totals,
+          borderColor: '#c9a227',
+          backgroundColor: 'rgba(201,162,39,0.12)',
+          fill: true,
+          tension: 0.3,
+          yAxisID: 'y',
+          pointBackgroundColor: pointColors,
+          pointRadius: 5,
+        },
+        {
+          label: '收益率(%)',
+          data: profits,
+          borderColor: '#94a3b8',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.2,
+          yAxisID: 'y1',
+          pointStyle: 'rect',
+          pointBackgroundColor: profitPointColors,
+          pointRadius: 5,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: '总价' } },
+        y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '收益率%' } }
+      },
+      plugins: { tooltip: { callbacks: { label: (ctx)=>`${ctx.dataset.label}: ${fmt(ctx.raw)}` } } }
+    }
+  });
+
+  document.getElementById('history-modal').classList.add('active');
+}
+
+/* ========== 通用 UI ========== */
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function closeOnOverlay(e, id) { if (e.target.id === id) closeModal(id); }
+function toggleSection(id, header) {
+  const el = document.getElementById(id);
+  const icon = header.querySelector('.toggle-icon');
+  if (el.style.display === 'none') {
+    el.style.display = 'block'; icon.textContent = '▼';
+  } else {
+    el.style.display = 'none'; icon.textContent = '▶';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
