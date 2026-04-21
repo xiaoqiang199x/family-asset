@@ -1,0 +1,4 @@
+﻿id,product_id,product_name,asset_type,operation_type,change_amount,price,new_amount,new_cost,new_value,date,note
+8162d35b,7e7099f5,招商银行,银行理财,添加记录,10000.0,1.0,10000.0,1.0,1.0,2026-04-17,
+97f6558d,7e7099f5,招商银行,银行理财,买入,10000.0,1.03,20000.0,1.015,1.03,2026-04-19,
+4c4affb2,6b319dad,茅台,股票,添加记录,100.0,1026.0,100.0,1000.0,1026.0,2026-04-21,
